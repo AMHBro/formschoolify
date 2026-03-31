@@ -1,0 +1,101 @@
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+enum UserRole {
+  teacher
+  student
+}
+
+enum FieldType {
+  text
+  image
+  pdf
+  file
+}
+
+enum SubmissionStatus {
+  draft
+  submitted
+}
+
+model User {
+  id           String       @id @default(uuid())
+  role         UserRole
+  fullName     String
+  email        String       @unique
+  passwordHash String
+  createdAt    DateTime     @default(now())
+  requests     Request[]
+  submissions  Submission[]
+}
+
+model Request {
+  id          String         @id @default(uuid())
+  teacherId   String
+  teacher     User           @relation(fields: [teacherId], references: [id], onDelete: Cascade)
+  title       String
+  description String?
+  deadline    DateTime?
+  shareToken  String         @unique
+  isActive    Boolean        @default(true)
+  createdAt   DateTime       @default(now())
+  fields      RequestField[]
+  submissions Submission[]
+
+  @@index([teacherId])
+}
+
+model RequestField {
+  id              String            @id @default(uuid())
+  requestId       String
+  request         Request           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  label           String
+  fieldType       FieldType
+  isRequired      Boolean           @default(true)
+  sortOrder       Int
+  validationRules Json              @default("{}")
+  values          SubmissionValue[]
+
+  @@index([requestId])
+}
+
+model Submission {
+  id          String            @id @default(uuid())
+  requestId   String
+  request     Request           @relation(fields: [requestId], references: [id], onDelete: Cascade)
+  studentId   String
+  student     User              @relation(fields: [studentId], references: [id], onDelete: Cascade)
+  status      SubmissionStatus
+  submittedAt DateTime?
+  createdAt   DateTime          @default(now())
+  values      SubmissionValue[]
+
+  @@unique([requestId, studentId])
+  @@index([requestId])
+  @@index([studentId])
+}
+
+model SubmissionValue {
+  id               String      @id @default(uuid())
+  submissionId     String
+  submission       Submission  @relation(fields: [submissionId], references: [id], onDelete: Cascade)
+  fieldId          String
+  field            RequestField @relation(fields: [fieldId], references: [id], onDelete: Cascade)
+  textValue        String?
+  fileUrl          String?
+  originalFileName String?
+  storedFileName   String?
+  mimeType         String?
+  fileSize         BigInt?
+  createdAt        DateTime    @default(now())
+
+  @@unique([submissionId, fieldId])
+  @@index([submissionId])
+}
+
