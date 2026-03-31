@@ -1,7 +1,7 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import { useMemo, useState } from "react";
+import { useEffect, useState } from "react";
 
 type FormField = {
   id: string;
@@ -21,16 +21,7 @@ type TeacherForm = {
   createdAt: string;
 };
 
-type StudentSubmission = {
-  id: string;
-  formToken: string;
-  studentName: string;
-  answers: Record<string, string>;
-  submittedAt: string;
-};
-
-const FORMS_KEY = "demoForms";
-const SUBMISSIONS_KEY = "demoSubmissions";
+const API_BASE = "/api";
 
 export default function SubmitByTokenPage() {
   const params = useParams<{ token: string }>();
@@ -38,18 +29,30 @@ export default function SubmitByTokenPage() {
   const [studentName, setStudentName] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
   const [message, setMessage] = useState("");
+  const [form, setForm] = useState<TeacherForm | null>(null);
+  const [loading, setLoading] = useState(true);
 
-  const form = useMemo(() => {
-    if (typeof window === "undefined") return null;
-    try {
-      const forms = JSON.parse(localStorage.getItem(FORMS_KEY) || "[]") as TeacherForm[];
-      return forms.find((f) => f.token === token) || null;
-    } catch {
-      return null;
-    }
+  useEffect(() => {
+    if (!token) return;
+    (async () => {
+      setLoading(true);
+      try {
+        const res = await fetch(`${API_BASE}/forms/token/${token}`);
+        const json = await res.json();
+        if (!res.ok) {
+          setForm(null);
+        } else {
+          setForm(json.form);
+        }
+      } catch {
+        setForm(null);
+      } finally {
+        setLoading(false);
+      }
+    })();
   }, [token]);
 
-  function submit() {
+  async function submit() {
     if (!form) return;
     if (!form.isOpen) {
       setMessage("هذا النموذج مغلق من قبل الأستاذ.");
@@ -64,20 +67,35 @@ export default function SubmitByTokenPage() {
       setMessage(`الحقل مطلوب: ${missing.label}`);
       return;
     }
-    const submissions = JSON.parse(
-      localStorage.getItem(SUBMISSIONS_KEY) || "[]",
-    ) as StudentSubmission[];
-    submissions.unshift({
-      id: crypto.randomUUID(),
+    const payload: {
+      formToken: string;
+      studentName: string;
+      answers: Record<string, string>;
+    } = {
       formToken: form.token,
       studentName: studentName.trim(),
       answers,
-      submittedAt: new Date().toLocaleString(),
+    };
+    const res = await fetch(`${API_BASE}/submissions`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(payload),
     });
-    localStorage.setItem(SUBMISSIONS_KEY, JSON.stringify(submissions));
+    if (!res.ok) {
+      setMessage("تعذر إرسال الإجابات.");
+      return;
+    }
     setMessage("تم إرسال الإجابات بنجاح.");
     setStudentName("");
     setAnswers({});
+  }
+
+  if (loading) {
+    return (
+      <div className="flex min-h-screen items-center justify-center bg-[#f0e9f4] p-6">
+        <div className="rounded-xl bg-white p-6 text-sm text-zinc-700 shadow-sm">جارٍ التحميل...</div>
+      </div>
+    );
   }
 
   if (!form) {

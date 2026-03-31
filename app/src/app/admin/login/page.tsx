@@ -4,8 +4,6 @@ import { useRouter } from "next/navigation";
 import { useState } from "react";
 
 const API_BASE = "/api";
-const DEMO_ADMIN_USERNAME = "admin";
-const DEMO_ADMIN_PASSWORD = "admin123";
 
 export default function AdminLoginPage() {
   const router = useRouter();
@@ -25,22 +23,15 @@ export default function AdminLoginPage() {
         body: JSON.stringify({ username, password }),
       });
       const json = await res.json();
-      if (!json.ok) {
-        setError(json.error?.message || "فشل تسجيل الدخول.");
+      if (!res.ok) {
+        setError(json.error || "فشل تسجيل الدخول.");
       } else {
-        localStorage.setItem("adminUsername", json.data.username);
-        localStorage.setItem("adminId", json.data.adminId);
+        localStorage.setItem("adminUsername", json.admin.username);
+        localStorage.setItem("adminId", json.admin.id);
         router.push("/admin/teachers");
       }
-    } catch (err) {
-      // Offline/demo fallback when backend is unavailable.
-      if (username === DEMO_ADMIN_USERNAME && password === DEMO_ADMIN_PASSWORD) {
-        localStorage.setItem("adminUsername", DEMO_ADMIN_USERNAME);
-        localStorage.setItem("adminId", "demo-admin-id");
-        router.push("/admin/teachers");
-      } else {
-        setError("الخادم غير متاح. في وضع التجربة: admin / admin123");
-      }
+    } catch {
+      setError("تعذر الاتصال بالخادم.");
     } finally {
       setLoading(false);
     }
@@ -50,7 +41,7 @@ export default function AdminLoginPage() {
     <div className="flex min-h-screen items-center justify-center bg-[#f0e9f4] p-6">
       <div className="w-full max-w-md rounded-2xl bg-white p-8 shadow-sm">
         <h1 className="text-2xl font-bold text-[#391f5a]">لوحة المدير</h1>
-        <p className="mt-2 text-sm text-zinc-600">تسجيل دخول للوصول إلى إدارة الأساتذة.</p>
+        <p className="mt-2 text-sm text-zinc-600">تسجيل دخول للوصول إلى إدارة الأساتذة (الافتراضي: admin / admin123).</p>
         <form className="mt-6 space-y-4" onSubmit={handleSubmit}>
           <div>
             <label className="mb-1 block text-sm font-medium">اسم المستخدم</label>

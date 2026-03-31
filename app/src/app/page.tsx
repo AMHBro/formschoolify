@@ -1,6 +1,7 @@
 "use client";
+/* eslint-disable react-hooks/set-state-in-effect */
 
-import { useEffect, useMemo, useState } from "react";
+import { useCallback, useEffect, useMemo, useState } from "react";
 
 type FieldType = "text" | "number" | "image" | "file";
 
@@ -16,6 +17,7 @@ type StudentSubmission = {
   formToken: string;
   studentName: string;
   answers: Record<string, string>;
+  createdAt?: string;
   submittedAt: string;
 };
 
@@ -37,8 +39,6 @@ const BRAND = {
 };
 
 const API_BASE = "/api";
-const FORMS_KEY = "demoForms";
-const SUBMISSIONS_KEY = "demoSubmissions";
 
 function createDefaultField(type: FieldType): FormField {
   return {
@@ -56,20 +56,12 @@ function createDefaultField(type: FieldType): FormField {
   };
 }
 
-function safeRead<T>(key: string, fallback: T): T {
-  try {
-    const raw = localStorage.getItem(key);
-    return raw ? (JSON.parse(raw) as T) : fallback;
-  } catch {
-    return fallback;
-  }
-}
-
 export default function Home() {
+  const initialTeacherId = typeof window !== "undefined" ? localStorage.getItem("teacherId") || "" : "";
   const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
-  const [isLoggedIn, setIsLoggedIn] = useState(false);
-  const [teacherId, setTeacherId] = useState("");
+  const [isLoggedIn, setIsLoggedIn] = useState(Boolean(initialTeacherId));
+  const [teacherId, setTeacherId] = useState(initialTeacherId);
   const [loginError, setLoginError] = useState("");
   const [activePanel, setActivePanel] = useState<"forms" | "builder" | "responses">(
     "forms",
@@ -84,25 +76,46 @@ export default function Home() {
   const [forms, setForms] = useState<TeacherForm[]>([]);
   const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
   const [selectedToken, setSelectedToken] = useState("");
-  const DEMO_PASSWORD = "123456";
 
-  useEffect(() => {
-    const storedTeacherId = localStorage.getItem("teacherId");
-    if (storedTeacherId) {
-      setTeacherId(storedTeacherId);
-      setIsLoggedIn(true);
+  const loadForms = useCallback(async (currentTeacherId = teacherId) => {
+    const res = await fetch(`${API_BASE}/forms/by-teacher/${currentTeacherId}`);
+    const json = await res.json();
+    if (!res.ok) {
+      return;
     }
+    setForms(json.forms);
+    if (!selectedToken && json.forms.length > 0) {
+      setSelectedToken(json.forms[0].token);
+    }
+  }, [teacherId, selectedToken]);
+
+  const loadSubmissions = useCallback(async (token: string) => {
+    const res = await fetch(`${API_BASE}/submissions/by-token/${token}`);
+    const json = await res.json();
+    if (!res.ok) {
+      return;
+    }
+    const normalized = (json.submissions || []).map((item: StudentSubmission) => ({
+      ...item,
+      submittedAt: item.createdAt ? new Date(item.createdAt).toLocaleString() : "-",
+    }));
+    setSubmissions(normalized);
   }, []);
 
   useEffect(() => {
-    if (!teacherId) return;
-    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
-    const mine = allForms.filter((f) => f.teacherId === teacherId);
-    setForms(mine);
-    if (!selectedToken && mine.length > 0) setSelectedToken(mine[0].token);
-    const allSubs = safeRead<StudentSubmission[]>(SUBMISSIONS_KEY, []);
-    setSubmissions(allSubs);
-  }, [teacherId, selectedToken]);
+    if (!teacherId) {
+      return;
+    }
+    void loadForms(teacherId);
+  }, [teacherId, loadForms]);
+
+  useEffect(() => {
+    if (!selectedToken) {
+      setSubmissions([]);
+      return;
+    }
+    void loadSubmissions(selectedToken);
+  }, [selectedToken, loadSubmissions]);
 
   const shareLink = useMemo(() => {
     if (!selectedToken) return "";
@@ -121,26 +134,16 @@ export default function Home() {
           body: JSON.stringify({ phone, password }),
         });
         const json = await res.json();
-        if (!json.ok) {
-          setLoginError(json.error?.message || "بيانات الدخول غير صحيحة.");
+        if (!res.ok) {
+          setLoginError(json.error || "بيانات الدخول غير صحيحة.");
         } else {
-          localStorage.setItem("teacherId", json.data.teacherId);
-          localStorage.setItem("teacherName", json.data.fullName);
-          setTeacherId(json.data.teacherId);
+          localStorage.setItem("teacherId", json.teacher.id);
+          localStorage.setItem("teacherName", json.teacher.fullName);
+          setTeacherId(json.teacher.id);
           setIsLoggedIn(true);
         }
       } catch {
-        // Offline/demo fallback when backend is unavailable.
-        if (phone.trim().length > 0 && password === DEMO_PASSWORD) {
-          const id = `demo-${phone.trim()}`;
-          localStorage.setItem("teacherId", id);
-          localStorage.setItem("teacherName", `Teacher ${phone.trim()}`);
-          setTeacherId(id);
-          setIsLoggedIn(true);
-          setLoginError("");
-        } else {
-          setLoginError("الخادم غير متاح. في وضع التجربة: أي رقم هاتف + 123456");
-        }
+        setLoginError("تعذر الاتصال بالخادم.");
       }
     })();
   }
@@ -181,33 +184,30 @@ export default function Home() {
     setSelectedToken("");
   }
 
-  function createForm() {
+  async function createForm() {
     if (!teacherId) return;
-    const form: TeacherForm = {
-      id: crypto.randomUUID(),
-      teacherId,
-      title: title.trim() || "نموذج جديد",
-      description: description.trim(),
-      fields,
-      token: crypto.randomUUID().replace(/-/g, "").slice(0, 12),
-      isOpen: true,
-      createdAt: new Date().toISOString(),
-    };
-    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
-    const next = [form, ...allForms];
-    localStorage.setItem(FORMS_KEY, JSON.stringify(next));
-    setForms(next.filter((f) => f.teacherId === teacherId));
-    setSelectedToken(form.token);
+    const res = await fetch(`${API_BASE}/forms`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        teacherId,
+        title: title.trim() || "نموذج جديد",
+        description: description.trim(),
+        fields,
+      }),
+    });
+    const json = await res.json();
+    if (!res.ok) return;
+    await loadForms();
+    setSelectedToken(json.form.token);
     setActivePanel("forms");
   }
 
-  function toggleFormOpen(token: string) {
-    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
-    const next = allForms.map((f) =>
-      f.token === token ? { ...f, isOpen: !f.isOpen } : f,
-    );
-    localStorage.setItem(FORMS_KEY, JSON.stringify(next));
-    setForms(next.filter((f) => f.teacherId === teacherId));
+  async function toggleFormOpen(formId: string) {
+    await fetch(`${API_BASE}/forms/${formId}/toggle-open`, {
+      method: "PATCH",
+    });
+    await loadForms();
   }
 
   const selectedForm = forms.find((f) => f.token === selectedToken);
@@ -265,9 +265,6 @@ export default function Home() {
               دخول
             </button>
           </form>
-          <p className="mt-4 rounded-lg bg-zinc-100 p-3 text-xs text-zinc-600">
-            Demo Login (بدون خادم): أي رقم هاتف + 123456
-          </p>
         </div>
       </div>
     );
@@ -355,7 +352,7 @@ export default function Home() {
                           الردود
                         </button>
                         <button
-                          onClick={() => toggleFormOpen(f.token)}
+                          onClick={() => toggleFormOpen(f.id)}
                           className="rounded-lg px-3 py-1 text-xs text-white"
                           style={{ backgroundColor: f.isOpen ? "#8d8d9a" : BRAND.royalPurple }}
                         >

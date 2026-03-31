@@ -13,8 +13,6 @@ type TeacherRow = {
   formCount: number;
 };
 
-const OFFLINE_TEACHERS_KEY = "offlineTeachers";
-
 export default function AdminTeachersPage() {
   const router = useRouter();
   const [teachers, setTeachers] = useState<TeacherRow[]>([]);
@@ -31,7 +29,7 @@ export default function AdminTeachersPage() {
       return;
     }
     loadTeachers();
-  }, []);
+  }, [router]);
 
   async function loadTeachers() {
     setLoading(true);
@@ -39,15 +37,13 @@ export default function AdminTeachersPage() {
     try {
       const res = await fetch(`${API_BASE}/admin/teachers`);
       const json = await res.json();
-      if (!json.ok) {
-        setError(json.error?.message || "فشل تحميل الأساتذة.");
+      if (!res.ok) {
+        setError(json.error || "فشل تحميل الأساتذة.");
       } else {
-        setTeachers(json.data);
+        setTeachers(json.teachers);
       }
     } catch {
-      const offlineTeachers = localStorage.getItem(OFFLINE_TEACHERS_KEY);
-      setTeachers(offlineTeachers ? JSON.parse(offlineTeachers) : []);
-      setError("وضع تجريبي: لا يوجد اتصال بالخادم.");
+      setError("تعذر الاتصال بالخادم.");
     } finally {
       setLoading(false);
     }
@@ -63,8 +59,8 @@ export default function AdminTeachersPage() {
         body: JSON.stringify({ fullName, phone, password }),
       });
       const json = await res.json();
-      if (!json.ok) {
-        setError(json.error?.message || "تعذر إضافة الأستاذ.");
+      if (!res.ok) {
+        setError(json.error || "تعذر إضافة الأستاذ.");
       } else {
         setFullName("");
         setPhone("");
@@ -72,27 +68,7 @@ export default function AdminTeachersPage() {
         loadTeachers();
       }
     } catch {
-      const offlineTeachers = localStorage.getItem(OFFLINE_TEACHERS_KEY);
-      const parsed: TeacherRow[] = offlineTeachers ? JSON.parse(offlineTeachers) : [];
-      const exists = parsed.some((t) => t.phone === phone);
-      if (exists) {
-        setError("هذا الرقم موجود مسبقًا (وضع تجريبي).");
-        return;
-      }
-      const row: TeacherRow = {
-        id: crypto.randomUUID(),
-        fullName,
-        phone,
-        isActive: true,
-        formCount: 0,
-      };
-      const next = [row, ...parsed];
-      localStorage.setItem(OFFLINE_TEACHERS_KEY, JSON.stringify(next));
-      setTeachers(next);
-      setFullName("");
-      setPhone("");
-      setPassword("");
-      setError("تم الحفظ محليًا (وضع تجريبي).");
+      setError("تعذر الاتصال بالخادم.");
     }
   }
 
@@ -103,18 +79,13 @@ export default function AdminTeachersPage() {
         method: "PATCH",
       });
       const json = await res.json();
-      if (!json.ok) {
-        setError(json.error?.message || "تعذر تحديث حالة الأستاذ.");
+      if (!res.ok) {
+        setError(json.error || "تعذر تحديث حالة الأستاذ.");
       } else {
         loadTeachers();
       }
     } catch {
-      const next = teachers.map((t) =>
-        t.id === id ? { ...t, isActive: !t.isActive } : t,
-      );
-      setTeachers(next);
-      localStorage.setItem(OFFLINE_TEACHERS_KEY, JSON.stringify(next));
-      setError("تم تحديث الحالة محليًا (وضع تجريبي).");
+      setError("تعذر الاتصال بالخادم.");
     }
   }
 

@@ -11,20 +11,13 @@ automatic filename generation at upload time.
 - `sql/` optional relational schema draft
 - `prisma/` optional Prisma schema draft
 
-## Run frontend
+## Run app (Next.js + API + Mongo Atlas)
 
 ```bash
 cd app
 npm install
-npm run dev
-```
-
-## Run backend
-
-```bash
-cd backend
-npm install
-cp .env.example .env
+cp .env.example .env.local
+# add your Mongo Atlas connection string in .env.local
 npm run dev
 ```
 
@@ -32,7 +25,7 @@ npm run dev
 
 - Teacher creates dynamic forms with variable fields
 - Public token link for each form
-- Student submits text answers and files
-- Backend validates and renames uploaded files using answer-based pattern
-- Submissions stored and queryable per form
+- Student submits answers through Next.js API routes
+- Forms and submissions are persisted in MongoDB (Atlas-ready)
+- Admin login and teacher management are persisted in MongoDB
 
