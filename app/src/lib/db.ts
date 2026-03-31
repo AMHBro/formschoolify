@@ -12,7 +12,11 @@ export function connectDb() {
     throw new Error("MONGODB_URI is not set.");
   }
   if (!globalForMongoose.mongooseConn) {
-    globalForMongoose.mongooseConn = mongoose.connect(MONGODB_URI);
+    globalForMongoose.mongooseConn = mongoose.connect(MONGODB_URI).catch((error) => {
+      // Allow retry on next request if first connection failed.
+      globalForMongoose.mongooseConn = undefined;
+      throw error;
+    });
   }
   return globalForMongoose.mongooseConn;
 }
