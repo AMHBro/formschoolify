@@ -1,13 +1,26 @@
-import { Admin } from "@/lib/models/Admin";
 import { sha256 } from "@/lib/hash";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function ensureDefaultAdmin() {
-  const existing = await Admin.findOne({ username: "admin" });
+  const supabase = getSupabaseServerClient();
+  const { data: existing, error: selectError } = await supabase
+    .from("admins")
+    .select("id")
+    .eq("username", "admin")
+    .maybeSingle();
+
+  if (selectError) {
+    throw selectError;
+  }
+
   if (!existing) {
-    await Admin.create({
+    const { error: insertError } = await supabase.from("admins").insert({
       username: "admin",
-      passwordHash: sha256("admin123"),
+      password_hash: sha256("admin123"),
     });
+    if (insertError) {
+      throw insertError;
+    }
   }
 }
 

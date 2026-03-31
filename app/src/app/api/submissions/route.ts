@@ -1,34 +1,46 @@
-import { connectDb } from "@/lib/db";
-import { Form } from "@/lib/models/Form";
-import { Submission } from "@/lib/models/Submission";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function POST(request: Request) {
-  await connectDb();
+  const supabase = getSupabaseServerClient();
   const { formToken, studentName, answers } = await request.json();
 
   if (!formToken || !studentName) {
     return Response.json({ error: "formToken and studentName are required." }, { status: 400 });
   }
 
-  const form = await Form.findOne({ token: String(formToken) });
-  if (!form || !form.isOpen) {
+  const { data: form, error: formError } = await supabase
+    .from("forms")
+    .select("token, is_open")
+    .eq("token", String(formToken))
+    .maybeSingle();
+  if (formError) {
+    return Response.json({ error: "Database error." }, { status: 500 });
+  }
+  if (!form || !form.is_open) {
     return Response.json({ error: "Form is unavailable." }, { status: 404 });
   }
 
-  const submission = await Submission.create({
-    formToken: String(formToken),
-    studentName: String(studentName),
-    answers: typeof answers === "object" && answers ? answers : {},
-  });
+  const { data: submission, error: insertError } = await supabase
+    .from("submissions")
+    .insert({
+      form_token: String(formToken),
+      student_name: String(studentName),
+      answers_json: typeof answers === "object" && answers ? answers : {},
+    })
+    .select("id, form_token, student_name, answers_json, created_at")
+    .single();
+  if (insertError || !submission) {
+    return Response.json({ error: "Failed to create submission." }, { status: 500 });
+  }
 
   return Response.json(
     {
       submission: {
-        id: String(submission._id),
-        formToken: submission.formToken,
-        studentName: submission.studentName,
-        answers: submission.answers,
-        createdAt: submission.createdAt,
+        id: String(submission.id),
+        formToken: submission.form_token,
+        studentName: submission.student_name,
+        answers: submission.answers_json,
+        createdAt: submission.created_at,
       },
     },
     { status: 201 },

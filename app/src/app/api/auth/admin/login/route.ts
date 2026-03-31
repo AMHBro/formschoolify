@@ -1,26 +1,33 @@
-import { connectDb } from "@/lib/db";
 import { ensureDefaultAdmin } from "@/lib/ensureAdmin";
 import { sha256 } from "@/lib/hash";
-import { Admin } from "@/lib/models/Admin";
+import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function POST(request: Request) {
   try {
-    await connectDb();
     await ensureDefaultAdmin();
+    const supabase = getSupabaseServerClient();
 
     const { username, password } = await request.json();
     if (!username || !password) {
       return Response.json({ error: "Username and password are required." }, { status: 400 });
     }
 
-    const admin = await Admin.findOne({ username: String(username) });
-    if (!admin || admin.passwordHash !== sha256(String(password))) {
+    const { data: admin, error } = await supabase
+      .from("admins")
+      .select("id, username, password_hash")
+      .eq("username", String(username))
+      .maybeSingle();
+    if (error) {
+      throw error;
+    }
+
+    if (!admin || admin.password_hash !== sha256(String(password))) {
       return Response.json({ error: "Invalid credentials." }, { status: 401 });
     }
 
     return Response.json({
       admin: {
-        id: String(admin._id),
+        id: String(admin.id),
         username: admin.username,
       },
     });
@@ -29,7 +36,7 @@ export async function POST(request: Request) {
     return Response.json(
       {
         error:
-          "Server configuration error. Verify MONGODB_URI and Mongo Atlas network access.",
+          "Server configuration error. Verify SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY and schema.",
       },
       { status: 500 },
     );
