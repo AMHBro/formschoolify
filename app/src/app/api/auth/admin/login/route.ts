@@ -1,5 +1,6 @@
 import { ensureDefaultAdmin } from "@/lib/ensureAdmin";
 import { sha256 } from "@/lib/hash";
+import { diagnoseSupabaseFailure } from "@/lib/supabaseDiagnostics";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function POST(request: Request) {
@@ -33,13 +34,8 @@ export async function POST(request: Request) {
     });
   } catch (error) {
     console.error("Admin login error:", error);
-    return Response.json(
-      {
-        error:
-          "Server configuration error. Verify SUPABASE_URL/SUPABASE_SERVICE_ROLE_KEY and schema.",
-      },
-      { status: 500 },
-    );
+    const d = diagnoseSupabaseFailure(error);
+    return Response.json({ error: d.message, issue: d.issue }, { status: d.httpStatus });
   }
 }
 
