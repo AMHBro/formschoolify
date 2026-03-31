@@ -11,11 +11,23 @@ type FormField = {
   required: boolean;
 };
 
-type StudentResponse = {
+type StudentSubmission = {
   id: string;
+  formToken: string;
   studentName: string;
+  answers: Record<string, string>;
   submittedAt: string;
-  status: "submitted" | "pending";
+};
+
+type TeacherForm = {
+  id: string;
+  teacherId: string;
+  title: string;
+  description: string;
+  fields: FormField[];
+  token: string;
+  isOpen: boolean;
+  createdAt: string;
 };
 
 const BRAND = {
@@ -25,6 +37,8 @@ const BRAND = {
 };
 
 const API_BASE = "/api";
+const FORMS_KEY = "demoForms";
+const SUBMISSIONS_KEY = "demoSubmissions";
 
 function createDefaultField(type: FieldType): FormField {
   return {
@@ -42,13 +56,23 @@ function createDefaultField(type: FieldType): FormField {
   };
 }
 
+function safeRead<T>(key: string, fallback: T): T {
+  try {
+    const raw = localStorage.getItem(key);
+    return raw ? (JSON.parse(raw) as T) : fallback;
+  } catch {
+    return fallback;
+  }
+}
+
 export default function Home() {
-  const [email, setEmail] = useState("");
+  const [phone, setPhone] = useState("");
   const [password, setPassword] = useState("");
   const [isLoggedIn, setIsLoggedIn] = useState(false);
+  const [teacherId, setTeacherId] = useState("");
   const [loginError, setLoginError] = useState("");
-  const [activePanel, setActivePanel] = useState<"builder" | "responses">(
-    "builder",
+  const [activePanel, setActivePanel] = useState<"forms" | "builder" | "responses">(
+    "forms",
   );
 
   const [title, setTitle] = useState("نموذج طلب مستندات التسجيل");
@@ -57,31 +81,34 @@ export default function Home() {
     createDefaultField("text"),
     createDefaultField("image"),
   ]);
-  const [responses] = useState<StudentResponse[]>([
-    {
-      id: "1",
-      studentName: "Ali Hassan",
-      submittedAt: "2026-03-31 09:15",
-      status: "submitted",
-    },
-    {
-      id: "2",
-      studentName: "Sara Ahmed",
-      submittedAt: "-",
-      status: "pending",
-    },
-  ]);
+  const [forms, setForms] = useState<TeacherForm[]>([]);
+  const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
+  const [selectedToken, setSelectedToken] = useState("");
   const DEMO_PASSWORD = "123456";
 
   useEffect(() => {
-    const teacherId = localStorage.getItem("teacherId");
-    if (teacherId) setIsLoggedIn(true);
+    const storedTeacherId = localStorage.getItem("teacherId");
+    if (storedTeacherId) {
+      setTeacherId(storedTeacherId);
+      setIsLoggedIn(true);
+    }
   }, []);
 
+  useEffect(() => {
+    if (!teacherId) return;
+    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
+    const mine = allForms.filter((f) => f.teacherId === teacherId);
+    setForms(mine);
+    if (!selectedToken && mine.length > 0) setSelectedToken(mine[0].token);
+    const allSubs = safeRead<StudentSubmission[]>(SUBMISSIONS_KEY, []);
+    setSubmissions(allSubs);
+  }, [teacherId, selectedToken]);
+
   const shareLink = useMemo(() => {
-    const slug = title.trim().replace(/\s+/g, "-").toLowerCase();
-    return `https://your-domain.com/form/${slug || "new-form"}`;
-  }, [title]);
+    if (!selectedToken) return "";
+    if (typeof window === "undefined") return `/submit/${selectedToken}`;
+    return `${window.location.origin}/submit/${selectedToken}`;
+  }, [selectedToken]);
 
   function handleLogin(e: React.FormEvent) {
     e.preventDefault();
@@ -91,7 +118,7 @@ export default function Home() {
         const res = await fetch(`${API_BASE}/auth/teacher/login`, {
           method: "POST",
           headers: { "Content-Type": "application/json" },
-          body: JSON.stringify({ phone: email, password }),
+          body: JSON.stringify({ phone, password }),
         });
         const json = await res.json();
         if (!json.ok) {
@@ -99,13 +126,16 @@ export default function Home() {
         } else {
           localStorage.setItem("teacherId", json.data.teacherId);
           localStorage.setItem("teacherName", json.data.fullName);
+          setTeacherId(json.data.teacherId);
           setIsLoggedIn(true);
         }
       } catch {
         // Offline/demo fallback when backend is unavailable.
-        if (email.trim().length > 0 && password === DEMO_PASSWORD) {
-          localStorage.setItem("teacherId", "demo-teacher-id");
-          localStorage.setItem("teacherName", `Teacher ${email.trim()}`);
+        if (phone.trim().length > 0 && password === DEMO_PASSWORD) {
+          const id = `demo-${phone.trim()}`;
+          localStorage.setItem("teacherId", id);
+          localStorage.setItem("teacherName", `Teacher ${phone.trim()}`);
+          setTeacherId(id);
           setIsLoggedIn(true);
           setLoginError("");
         } else {
@@ -145,8 +175,47 @@ export default function Home() {
     localStorage.removeItem("teacherId");
     localStorage.removeItem("teacherName");
     setIsLoggedIn(false);
-    setEmail("");
+    setPhone("");
     setPassword("");
+    setForms([]);
+    setSelectedToken("");
+  }
+
+  function createForm() {
+    if (!teacherId) return;
+    const form: TeacherForm = {
+      id: crypto.randomUUID(),
+      teacherId,
+      title: title.trim() || "نموذج جديد",
+      description: description.trim(),
+      fields,
+      token: crypto.randomUUID().replace(/-/g, "").slice(0, 12),
+      isOpen: true,
+      createdAt: new Date().toISOString(),
+    };
+    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
+    const next = [form, ...allForms];
+    localStorage.setItem(FORMS_KEY, JSON.stringify(next));
+    setForms(next.filter((f) => f.teacherId === teacherId));
+    setSelectedToken(form.token);
+    setActivePanel("forms");
+  }
+
+  function toggleFormOpen(token: string) {
+    const allForms = safeRead<TeacherForm[]>(FORMS_KEY, []);
+    const next = allForms.map((f) =>
+      f.token === token ? { ...f, isOpen: !f.isOpen } : f,
+    );
+    localStorage.setItem(FORMS_KEY, JSON.stringify(next));
+    setForms(next.filter((f) => f.teacherId === teacherId));
+  }
+
+  const selectedForm = forms.find((f) => f.token === selectedToken);
+  const formSubmissions = submissions.filter((s) => s.formToken === selectedToken);
+
+  function copyLink() {
+    if (!shareLink) return;
+    navigator.clipboard.writeText(shareLink);
   }
 
   if (!isLoggedIn) {
@@ -166,8 +235,8 @@ export default function Home() {
             <div>
               <label className="mb-1 block text-sm font-medium">رقم الهاتف</label>
               <input
-                value={email}
-                onChange={(e) => setEmail(e.target.value)}
+                value={phone}
+                onChange={(e) => setPhone(e.target.value)}
                 className="w-full rounded-lg border border-zinc-300 px-3 py-2 outline-none"
                 style={{ borderColor: "#d7cae4" }}
                 placeholder="مثال: 0770000000"
@@ -219,6 +288,16 @@ export default function Home() {
             </div>
             <div className="flex items-center gap-2">
               <button
+                onClick={() => setActivePanel("forms")}
+                className="rounded-lg px-3 py-2 text-sm text-white"
+                style={{
+                  backgroundColor:
+                    activePanel === "forms" ? BRAND.royalPurple : BRAND.darkPurple,
+                }}
+              >
+                نماذجي
+              </button>
+              <button
                 onClick={() => setActivePanel("builder")}
                 className="rounded-lg px-3 py-2 text-sm text-white"
                 style={{
@@ -248,7 +327,50 @@ export default function Home() {
             </div>
           </div>
 
-          {activePanel === "builder" ? (
+          {activePanel === "forms" ? (
+            <div className="space-y-3">
+              {forms.length === 0 ? (
+                <p className="text-sm text-zinc-600">لا يوجد نماذج بعد. أنشئ نموذجًا جديدًا.</p>
+              ) : (
+                forms.map((f) => (
+                  <div
+                    key={f.id}
+                    className="rounded-xl border p-4"
+                    style={{ borderColor: "#e5dcef", backgroundColor: "#fcfaff" }}
+                  >
+                    <div className="flex items-center justify-between gap-3">
+                      <div>
+                        <p className="font-semibold">{f.title}</p>
+                        <p className="text-xs text-zinc-500">{f.description || "-"}</p>
+                      </div>
+                      <div className="flex items-center gap-2">
+                        <button
+                          onClick={() => {
+                            setSelectedToken(f.token);
+                            setActivePanel("responses");
+                          }}
+                          className="rounded-lg border px-3 py-1 text-xs"
+                          style={{ borderColor: "#d7cae4", color: BRAND.darkPurple }}
+                        >
+                          الردود
+                        </button>
+                        <button
+                          onClick={() => toggleFormOpen(f.token)}
+                          className="rounded-lg px-3 py-1 text-xs text-white"
+                          style={{ backgroundColor: f.isOpen ? "#8d8d9a" : BRAND.royalPurple }}
+                        >
+                          {f.isOpen ? "إغلاق الرابط" : "فتح الرابط"}
+                        </button>
+                      </div>
+                    </div>
+                    <p className="mt-2 break-all text-xs text-zinc-600">
+                      {typeof window !== "undefined" ? `${window.location.origin}/submit/${f.token}` : `/submit/${f.token}`}
+                    </p>
+                  </div>
+                ))
+              )}
+            </div>
+          ) : activePanel === "builder" ? (
             <>
               <div className="space-y-4">
                 <input
@@ -272,6 +394,7 @@ export default function Home() {
                 <button onClick={() => addField("number")} className="rounded-lg px-3 py-2 text-sm text-white" style={{ backgroundColor: BRAND.royalPurple }}>+ رقم</button>
                 <button onClick={() => addField("image")} className="rounded-lg px-3 py-2 text-sm text-white" style={{ backgroundColor: BRAND.royalPurple }}>+ صورة</button>
                 <button onClick={() => addField("file")} className="rounded-lg px-3 py-2 text-sm text-white" style={{ backgroundColor: BRAND.royalPurple }}>+ ملف</button>
+                <button onClick={createForm} className="rounded-lg px-3 py-2 text-sm text-white" style={{ backgroundColor: BRAND.darkPurple }}>حفظ كنموذج</button>
               </div>
 
               <div className="mt-5 space-y-3">
@@ -340,37 +463,51 @@ export default function Home() {
                 مكان ردود الطلاب
               </h2>
               <p className="mt-1 text-sm text-zinc-600">
-                هنا تظهر كل الردود. لاحقًا ستتحدث تلقائيًا من قاعدة البيانات.
+                هنا تظهر ردود النموذج المحدد.
               </p>
+              <div className="mt-3">
+                <select
+                  className="rounded-lg border px-3 py-2 text-sm"
+                  style={{ borderColor: "#d7cae4" }}
+                  value={selectedToken}
+                  onChange={(e) => setSelectedToken(e.target.value)}
+                >
+                  <option value="">اختر النموذج</option>
+                  {forms.map((f) => (
+                    <option key={f.id} value={f.token}>
+                      {f.title}
+                    </option>
+                  ))}
+                </select>
+              </div>
               <div className="mt-4 overflow-hidden rounded-lg border" style={{ borderColor: "#d7cae4" }}>
                 <table className="w-full text-sm">
                   <thead style={{ backgroundColor: BRAND.lavenderMist }}>
                     <tr>
                       <th className="px-3 py-2 text-right">الطالب</th>
                       <th className="px-3 py-2 text-right">وقت الإرسال</th>
-                      <th className="px-3 py-2 text-right">الحالة</th>
+                      <th className="px-3 py-2 text-right">البيانات</th>
                     </tr>
                   </thead>
                   <tbody>
-                    {responses.map((item) => (
+                    {formSubmissions.map((item) => (
                       <tr key={item.id} className="border-t" style={{ borderColor: "#eee4f6" }}>
                         <td className="px-3 py-2">{item.studentName}</td>
                         <td className="px-3 py-2">{item.submittedAt}</td>
                         <td className="px-3 py-2">
-                          <span
-                            className="rounded-full px-2 py-1 text-xs text-white"
-                            style={{
-                              backgroundColor:
-                                item.status === "submitted"
-                                  ? BRAND.royalPurple
-                                  : "#8d8d9a",
-                            }}
-                          >
-                            {item.status === "submitted" ? "تم الإرسال" : "بانتظار الإرسال"}
-                          </span>
+                          {Object.entries(item.answers)
+                            .map(([k, v]) => `${k}: ${v}`)
+                            .join(" | ")}
                         </td>
                       </tr>
                     ))}
+                    {formSubmissions.length === 0 && (
+                      <tr>
+                        <td className="px-3 py-3 text-zinc-500" colSpan={3}>
+                          لا توجد ردود لهذا النموذج بعد.
+                        </td>
+                      </tr>
+                    )}
                   </tbody>
                 </table>
               </div>
@@ -382,22 +519,30 @@ export default function Home() {
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold">رابط النموذج</h2>
             <p className="mt-2 text-sm text-zinc-600">
-              هذا هو الرابط الذي ترسله للطلاب.
+              هذا رابط النموذج المحدد للمشاركة مع الطلاب.
             </p>
             <p
               className="mt-3 break-all rounded-lg p-3 text-sm"
               style={{ backgroundColor: BRAND.lavenderMist, color: BRAND.darkPurple }}
             >
-              {shareLink}
+              {shareLink || "اختر نموذجًا من تبويب نماذجي"}
             </p>
+            <button
+              onClick={copyLink}
+              disabled={!shareLink}
+              className="mt-2 rounded-lg px-3 py-2 text-xs text-white disabled:opacity-50"
+              style={{ backgroundColor: BRAND.royalPurple }}
+            >
+              نسخ الرابط
+            </button>
           </section>
 
           <section className="rounded-2xl bg-white p-6 shadow-sm">
             <h2 className="text-lg font-semibold">معاينة سريعة (طالب)</h2>
-            <h3 className="mt-3 font-medium">{title}</h3>
-            <p className="mt-1 text-sm text-zinc-600">{description}</p>
+            <h3 className="mt-3 font-medium">{selectedForm?.title || title}</h3>
+            <p className="mt-1 text-sm text-zinc-600">{selectedForm?.description || description}</p>
             <div className="mt-4 space-y-2">
-              {fields.map((field) => (
+              {(selectedForm?.fields || fields).map((field) => (
                 <div
                   key={field.id}
                   className="rounded-lg p-3 text-sm"
