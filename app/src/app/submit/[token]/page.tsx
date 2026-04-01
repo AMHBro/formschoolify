@@ -28,6 +28,7 @@ export default function SubmitByTokenPage() {
   const token = params?.token || "";
   const [studentName, setStudentName] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
+  const [files, setFiles] = useState<Record<string, File | null>>({});
   const [message, setMessage] = useState("");
   const [form, setForm] = useState<TeacherForm | null>(null);
   const [loading, setLoading] = useState(true);
@@ -62,24 +63,33 @@ export default function SubmitByTokenPage() {
       setMessage("يرجى كتابة اسم الطالب.");
       return;
     }
-    const missing = form.fields.find((f) => f.required && !answers[f.id]?.trim());
+    const missing = form.fields.find((f) => {
+      if (!f.required) return false;
+      if (f.type === "image" || f.type === "file") {
+        return !files[f.id];
+      }
+      return !answers[f.id]?.trim();
+    });
     if (missing) {
       setMessage(`الحقل مطلوب: ${missing.label}`);
       return;
     }
-    const payload: {
-      formToken: string;
-      studentName: string;
-      answers: Record<string, string>;
-    } = {
-      formToken: form.token,
-      studentName: studentName.trim(),
-      answers,
-    };
+    const textAnswers = Object.fromEntries(
+      Object.entries(answers).filter(([_, value]) => value.trim().length > 0),
+    );
+    const payload = new FormData();
+    payload.set("formToken", form.token);
+    payload.set("studentName", studentName.trim());
+    payload.set("answers", JSON.stringify(textAnswers));
+    for (const field of form.fields) {
+      const selectedFile = files[field.id];
+      if (selectedFile) {
+        payload.set(`file_${field.id}`, selectedFile);
+      }
+    }
     const res = await fetch(`${API_BASE}/submissions`, {
       method: "POST",
-      headers: { "Content-Type": "application/json" },
-      body: JSON.stringify(payload),
+      body: payload,
     });
     if (!res.ok) {
       setMessage("تعذر إرسال الإجابات.");
@@ -88,6 +98,7 @@ export default function SubmitByTokenPage() {
     setMessage("تم إرسال الإجابات بنجاح.");
     setStudentName("");
     setAnswers({});
+    setFiles({});
   }
 
   if (loading) {
@@ -109,8 +120,8 @@ export default function SubmitByTokenPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0e9f4] p-6">
-      <main className="mx-auto max-w-2xl rounded-2xl bg-white p-6 shadow-sm">
+    <div className="min-h-screen bg-[#f0e9f4] p-4 sm:p-6">
+      <main className="mx-auto max-w-2xl rounded-2xl bg-white p-4 shadow-sm sm:p-6">
         <h1 className="text-2xl font-bold text-[#391f5a]">{form.title}</h1>
         <p className="mt-1 text-sm text-zinc-600">{form.description}</p>
         {!form.isOpen && (
@@ -119,28 +130,38 @@ export default function SubmitByTokenPage() {
           </p>
         )}
         <div className="mt-5 space-y-3">
-          <input
-            className="w-full rounded-lg border px-3 py-2"
-            style={{ borderColor: "#d7cae4" }}
-            placeholder="اسم الطالب"
-            value={studentName}
-            onChange={(e) => setStudentName(e.target.value)}
-          />
+          <input className="w-full rounded-lg border px-3 py-2" style={{ borderColor: "#d7cae4" }} placeholder="اسم الطالب" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
           {form.fields.map((f) => (
             <div key={f.id}>
               <label className="mb-1 block text-sm font-medium">
                 {f.label} {f.required ? "*" : ""}
               </label>
-              <input
-                className="w-full rounded-lg border px-3 py-2"
-                style={{ borderColor: "#d7cae4" }}
-                type={f.type === "number" ? "number" : "text"}
-                placeholder={f.type === "image" || f.type === "file" ? "أدخل اسم الملف أو ملاحظة" : ""}
-                value={answers[f.id] || ""}
-                onChange={(e) =>
-                  setAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))
-                }
-              />
+              {f.type === "image" || f.type === "file" ? (
+                <div className="space-y-2">
+                  <input
+                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                    style={{ borderColor: "#d7cae4" }}
+                    type="file"
+                    accept={f.type === "image" ? "image/*" : "*"}
+                    onChange={(e) =>
+                      setFiles((prev) => ({ ...prev, [f.id]: e.target.files?.[0] ?? null }))
+                    }
+                  />
+                  {files[f.id] && (
+                    <p className="text-xs text-zinc-600">
+                      تم اختيار: {files[f.id]?.name}
+                    </p>
+                  )}
+                </div>
+              ) : (
+                <input
+                  className="w-full rounded-lg border px-3 py-2"
+                  style={{ borderColor: "#d7cae4" }}
+                  type={f.type === "number" ? "number" : "text"}
+                  value={answers[f.id] || ""}
+                  onChange={(e) => setAnswers((prev) => ({ ...prev, [f.id]: e.target.value }))}
+                />
+              )}
             </div>
           ))}
         </div>

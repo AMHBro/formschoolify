@@ -24,11 +24,14 @@ export function diagnoseSupabaseFailure(error: unknown): SupabaseDiagnostic {
   const raw = compactMessage(msg);
   const lower = raw.toLowerCase();
 
-  if (raw.includes("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set")) {
+  if (
+    raw.includes("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY must be set") ||
+    raw.includes("SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY) must be set")
+  ) {
     return {
       issue: "missing_env",
       message:
-        "لم يُضبط الخادم: أضف SUPABASE_URL و SUPABASE_SERVICE_ROLE_KEY في متغيرات بيئة Vercel (أو .env.local محليًا) ثم أعد النشر. | Server misconfigured: add SUPABASE_URL and SUPABASE_SERVICE_ROLE_KEY, then redeploy.",
+        "لم يُضبط الخادم: أضف SUPABASE_URL مع SUPABASE_SERVICE_ROLE_KEY (أو SUPABASE_SECRET_KEY) في متغيرات بيئة Vercel ثم أعد النشر. | Server misconfigured: add SUPABASE_URL with SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY), then redeploy.",
       httpStatus: 503,
     };
   }

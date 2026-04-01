@@ -7,15 +7,21 @@ import { diagnoseSupabaseFailure } from "@/lib/supabaseDiagnostics";
  */
 export async function GET() {
   const hasUrl = Boolean(process.env.SUPABASE_URL?.trim());
-  const hasKey = Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim());
+  const hasKey = Boolean(
+    process.env.SUPABASE_SERVICE_ROLE_KEY?.trim() || process.env.SUPABASE_SECRET_KEY?.trim(),
+  );
 
   if (!hasUrl || !hasKey) {
     return Response.json(
       {
         ok: false,
-        env: { supabaseUrl: hasUrl, serviceRoleKey: hasKey },
+        env: {
+          supabaseUrl: hasUrl,
+          serviceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+          secretKey: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+        },
         error:
-          "Missing SUPABASE_URL or SUPABASE_SERVICE_ROLE_KEY. Add them in Vercel → Settings → Environment Variables, then Redeploy.",
+          "Missing SUPABASE_URL or key. Add SUPABASE_SERVICE_ROLE_KEY (or SUPABASE_SECRET_KEY) in Vercel → Settings → Environment Variables, then Redeploy.",
         hintAr:
           "من Supabase: Project Settings → API → انسخ Project URL و service_role (السري) وليس anon.",
       },
@@ -31,7 +37,11 @@ export async function GET() {
       return Response.json(
         {
           ok: false,
-          env: { supabaseUrl: true, serviceRoleKey: true },
+          env: {
+            supabaseUrl: true,
+            serviceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+            secretKey: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+          },
           issue: d.issue,
           error: d.message,
         },
@@ -49,7 +59,11 @@ export async function GET() {
     return Response.json(
       {
         ok: false,
-        env: { supabaseUrl: hasUrl, serviceRoleKey: hasKey },
+        env: {
+          supabaseUrl: hasUrl,
+          serviceRoleKey: Boolean(process.env.SUPABASE_SERVICE_ROLE_KEY?.trim()),
+          secretKey: Boolean(process.env.SUPABASE_SECRET_KEY?.trim()),
+        },
         issue: d.issue,
         error: d.message,
       },

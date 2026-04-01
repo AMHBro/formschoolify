@@ -16,7 +16,7 @@ type StudentSubmission = {
   id: string;
   formToken: string;
   studentName: string;
-  answers: Record<string, string>;
+  answers: Record<string, string | { kind?: string; url?: string; name?: string; mimeType?: string }>;
   createdAt?: string;
   submittedAt: string;
 };
@@ -39,6 +39,12 @@ const BRAND = {
 };
 
 const API_BASE = "/api";
+
+function isUploadedValue(
+  value: string | { kind?: string; url?: string; name?: string; mimeType?: string },
+): value is { kind?: string; url?: string; name?: string; mimeType?: string } {
+  return typeof value === "object" && value !== null;
+}
 
 function createDefaultField(type: FieldType): FormField {
   return {
@@ -271,9 +277,9 @@ export default function Home() {
   }
 
   return (
-    <div className="min-h-screen p-6 text-zinc-900" style={{ backgroundColor: BRAND.lavenderMist }}>
+    <div className="min-h-screen p-3 text-zinc-900 sm:p-6" style={{ backgroundColor: BRAND.lavenderMist }}>
       <main className="mx-auto grid max-w-6xl gap-6 lg:grid-cols-[1.45fr_1fr]">
-        <section className="rounded-2xl bg-white p-6 shadow-sm">
+        <section className="rounded-2xl bg-white p-4 shadow-sm sm:p-6">
           <div className="mb-5 flex flex-wrap items-center justify-between gap-3">
             <div>
               <h1 className="text-2xl font-bold" style={{ color: BRAND.darkPurple }}>
@@ -283,7 +289,7 @@ export default function Home() {
                 إنشاء نموذج بسيط + متابعة ردود الطلاب.
               </p>
             </div>
-            <div className="flex items-center gap-2">
+            <div className="flex flex-wrap items-center gap-2">
               <button
                 onClick={() => setActivePanel("forms")}
                 className="rounded-lg px-3 py-2 text-sm text-white"
@@ -477,36 +483,41 @@ export default function Home() {
                   ))}
                 </select>
               </div>
-              <div className="mt-4 overflow-hidden rounded-lg border" style={{ borderColor: "#d7cae4" }}>
-                <table className="w-full text-sm">
-                  <thead style={{ backgroundColor: BRAND.lavenderMist }}>
-                    <tr>
-                      <th className="px-3 py-2 text-right">الطالب</th>
-                      <th className="px-3 py-2 text-right">وقت الإرسال</th>
-                      <th className="px-3 py-2 text-right">البيانات</th>
-                    </tr>
-                  </thead>
-                  <tbody>
-                    {formSubmissions.map((item) => (
-                      <tr key={item.id} className="border-t" style={{ borderColor: "#eee4f6" }}>
-                        <td className="px-3 py-2">{item.studentName}</td>
-                        <td className="px-3 py-2">{item.submittedAt}</td>
-                        <td className="px-3 py-2">
-                          {Object.entries(item.answers)
-                            .map(([k, v]) => `${k}: ${v}`)
-                            .join(" | ")}
-                        </td>
-                      </tr>
-                    ))}
-                    {formSubmissions.length === 0 && (
-                      <tr>
-                        <td className="px-3 py-3 text-zinc-500" colSpan={3}>
-                          لا توجد ردود لهذا النموذج بعد.
-                        </td>
-                      </tr>
-                    )}
-                  </tbody>
-                </table>
+              <div className="mt-4 space-y-3">
+                {formSubmissions.map((item) => (
+                  <article key={item.id} className="rounded-lg border p-3" style={{ borderColor: "#d7cae4", backgroundColor: "#fff" }}>
+                    <div className="mb-2 flex flex-wrap items-center justify-between gap-2">
+                      <p className="font-semibold">{item.studentName}</p>
+                      <p className="text-xs text-zinc-500">{item.submittedAt}</p>
+                    </div>
+                    <div className="grid gap-2">
+                      {Object.entries(item.answers).map(([key, value]) => (
+                        <div key={key} className="rounded-md bg-[#f8f4fc] p-2 text-sm">
+                          <p className="mb-1 text-xs font-medium text-zinc-600">{key}</p>
+                          {isUploadedValue(value) && value.url ? (
+                            value.mimeType?.startsWith("image/") ? (
+                              <a href={value.url} target="_blank" rel="noreferrer">
+                                {/* eslint-disable-next-line @next/next/no-img-element */}
+                                <img src={value.url} alt={value.name || key} className="max-h-44 w-auto rounded-md border" />
+                              </a>
+                            ) : (
+                              <a href={value.url} target="_blank" rel="noreferrer" className="text-[#6f459b] underline">
+                                {value.name || "تحميل الملف"}
+                              </a>
+                            )
+                          ) : (
+                            <p>{String(value)}</p>
+                          )}
+                        </div>
+                      ))}
+                    </div>
+                  </article>
+                ))}
+                {formSubmissions.length === 0 && (
+                  <p className="rounded-lg border px-3 py-3 text-sm text-zinc-500" style={{ borderColor: "#d7cae4" }}>
+                    لا توجد ردود لهذا النموذج بعد.
+                  </p>
+                )}
               </div>
             </div>
           )}
