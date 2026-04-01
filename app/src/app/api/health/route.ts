@@ -44,6 +44,7 @@ export async function GET() {
           },
           issue: d.issue,
           error: d.message,
+          ...(d.postgrestCode ? { postgrestCode: d.postgrestCode } : {}),
         },
         { status: d.httpStatus },
       );
@@ -66,6 +67,7 @@ export async function GET() {
         },
         issue: d.issue,
         error: d.message,
+        ...(d.postgrestCode ? { postgrestCode: d.postgrestCode } : {}),
       },
       { status: d.httpStatus },
     );

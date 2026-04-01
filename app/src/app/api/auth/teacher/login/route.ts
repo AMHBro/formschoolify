@@ -1,5 +1,5 @@
 import { sha256 } from "@/lib/hash";
-import { diagnoseSupabaseFailure } from "@/lib/supabaseDiagnostics";
+import { diagnoseSupabaseFailure, flattenSupabaseError } from "@/lib/supabaseDiagnostics";
 import { getSupabaseServerClient } from "@/lib/supabaseServer";
 
 export async function POST(request: Request) {
@@ -43,9 +43,16 @@ export async function POST(request: Request) {
       },
     });
   } catch (error) {
-    console.error("Teacher login error:", error);
+    console.error("Teacher login error:", flattenSupabaseError(error), error);
     const d = diagnoseSupabaseFailure(error);
-    return Response.json({ error: d.message, issue: d.issue }, { status: d.httpStatus });
+    return Response.json(
+      {
+        error: d.message,
+        issue: d.issue,
+        ...(d.postgrestCode ? { postgrestCode: d.postgrestCode } : {}),
+      },
+      { status: d.httpStatus },
+    );
   }
 }
 
