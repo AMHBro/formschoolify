@@ -120,7 +120,7 @@ export default function SubmitByTokenPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0e9f4] p-4 sm:p-6">
+    <div className="min-h-screen bg-[#f0e9f4] p-4 text-[#2e1f45] sm:p-6">
       <main className="mx-auto max-w-2xl rounded-2xl bg-white p-4 shadow-sm sm:p-6">
         <h1 className="text-2xl font-bold text-[#391f5a]">{form.title}</h1>
         <p className="mt-1 text-sm text-zinc-600">{form.description}</p>

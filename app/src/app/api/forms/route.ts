@@ -18,7 +18,7 @@ export async function POST(request: Request) {
       description: String(description ?? ""),
       fields_json: Array.isArray(fields) ? fields : [],
       token,
-      is_open: true,
+      is_open: false,
     })
     .select("id, teacher_id, title, description, token, is_open, fields_json, created_at")
     .single();

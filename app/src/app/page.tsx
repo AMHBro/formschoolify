@@ -216,6 +216,26 @@ export default function Home() {
     await loadForms();
   }
 
+  async function publishForm(formId: string, token: string, isOpen: boolean) {
+    if (!isOpen) {
+      await toggleFormOpen(formId);
+    }
+    setSelectedToken(token);
+    setActivePanel("responses");
+    if (typeof window !== "undefined") {
+      const link = `${window.location.origin}/submit/${token}`;
+      await navigator.clipboard.writeText(link);
+    }
+  }
+
+  async function deleteForm(formId: string) {
+    const ok = typeof window === "undefined" ? true : window.confirm("هل تريد حذف النموذج نهائيًا؟");
+    if (!ok) return;
+    await fetch(`${API_BASE}/forms/${formId}`, { method: "DELETE" });
+    await loadForms();
+    setSelectedToken("");
+  }
+
   const selectedForm = forms.find((f) => f.token === selectedToken);
   const formSubmissions = submissions.filter((s) => s.formToken === selectedToken);
 
@@ -346,7 +366,7 @@ export default function Home() {
                         <p className="font-semibold">{f.title}</p>
                         <p className="text-xs text-zinc-500">{f.description || "-"}</p>
                       </div>
-                      <div className="flex items-center gap-2">
+                      <div className="flex flex-wrap items-center gap-2">
                         <button
                           onClick={() => {
                             setSelectedToken(f.token);
@@ -358,11 +378,25 @@ export default function Home() {
                           الردود
                         </button>
                         <button
+                          onClick={() => publishForm(f.id, f.token, f.isOpen)}
+                          className="rounded-lg px-3 py-1 text-xs text-white"
+                          style={{ backgroundColor: BRAND.royalPurple }}
+                        >
+                          نشر
+                        </button>
+                        <button
                           onClick={() => toggleFormOpen(f.id)}
                           className="rounded-lg px-3 py-1 text-xs text-white"
                           style={{ backgroundColor: f.isOpen ? "#8d8d9a" : BRAND.royalPurple }}
                         >
                           {f.isOpen ? "إغلاق الرابط" : "فتح الرابط"}
+                        </button>
+                        <button
+                          onClick={() => deleteForm(f.id)}
+                          className="rounded-lg border px-3 py-1 text-xs"
+                          style={{ borderColor: "#f2cbd7", color: "#b22c5f" }}
+                        >
+                          حذف
                         </button>
                       </div>
                     </div>
