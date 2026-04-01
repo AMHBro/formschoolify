@@ -9,13 +9,22 @@ function sanitizeFileName(name: string) {
 async function ensureUploadBucket() {
   const supabase = getSupabaseServerClient();
   const { data: buckets, error } = await supabase.storage.listBuckets();
-  if (error) {
+  const exists = !error && buckets?.some((bucket) => bucket.name === UPLOAD_BUCKET);
+  if (exists) {
     return;
   }
-  const exists = buckets.some((bucket) => bucket.name === UPLOAD_BUCKET);
-  if (!exists) {
-    await supabase.storage.createBucket(UPLOAD_BUCKET, { public: true });
-  }
+  await supabase.storage.createBucket(UPLOAD_BUCKET, { public: true });
+}
+
+/** Undici/Node may not use the same `File` constructor as `instanceof File`. */
+function isNonEmptyUploadPart(value: FormDataEntryValue): value is Blob {
+  return (
+    typeof value === "object" &&
+    value !== null &&
+    typeof (value as Blob).arrayBuffer === "function" &&
+    typeof (value as Blob).size === "number" &&
+    (value as Blob).size > 0
+  );
 }
 
 export async function POST(request: Request) {
@@ -25,7 +34,7 @@ export async function POST(request: Request) {
   let studentName = "";
   let answers: Record<string, unknown> = {};
 
-  if (contentType.includes("multipart/form-data")) {
+  if (contentType.toLowerCase().includes("multipart/form-data")) {
     const formData = await request.formData();
     formToken = String(formData.get("formToken") ?? "");
     studentName = String(formData.get("studentName") ?? "");
@@ -37,18 +46,27 @@ export async function POST(request: Request) {
     }
 
     await ensureUploadBucket();
-    const uploadsByField = new Map<string, File[]>();
-    for (const [key, value] of formData.entries()) {
-      if (!key.startsWith("file_") || !(value instanceof File)) {
-        continue;
+    // Do not use formData.entries() for repeated keys: some runtimes only yield one part per name.
+    const uploadsByField = new Map<string, Blob[]>();
+    const fileKeys = new Set<string>();
+    for (const key of formData.keys()) {
+      if (key.startsWith("file_")) {
+        fileKeys.add(key);
       }
+    }
+    for (const key of fileKeys) {
       const fieldId = key.slice("file_".length);
-      if (!fieldId || value.size === 0) {
-        continue;
+      if (!fieldId) continue;
+      const parts = formData.getAll(key);
+      const list: Blob[] = [];
+      for (const value of parts) {
+        if (isNonEmptyUploadPart(value)) {
+          list.push(value);
+        }
       }
-      const list = uploadsByField.get(fieldId) ?? [];
-      list.push(value);
-      uploadsByField.set(fieldId, list);
+      if (list.length) {
+        uploadsByField.set(fieldId, list);
+      }
     }
 
     const uploadStamp = Date.now();
@@ -62,7 +80,10 @@ export async function POST(request: Request) {
       }> = [];
       for (let i = 0; i < fileList.length; i++) {
         const value = fileList[i];
-        const originalName = value.name || `${fieldId}.bin`;
+        const originalName =
+          typeof (value as File).name === "string" && (value as File).name
+            ? (value as File).name
+            : `${fieldId}.bin`;
         const ext = originalName.includes(".") ? originalName.split(".").pop() : "bin";
         const path = `${formToken}/${uploadStamp}-${i}-${fieldId}-${sanitizeFileName(studentName)}.${ext}`;
         const bytes = Buffer.from(await value.arrayBuffer());
