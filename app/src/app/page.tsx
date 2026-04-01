@@ -12,11 +12,12 @@ type FormField = {
   required: boolean;
 };
 
+type UploadedFileMeta = { kind?: string; url?: string; name?: string; mimeType?: string };
 type StudentSubmission = {
   id: string;
   formToken: string;
   studentName: string;
-  answers: Record<string, string | { kind?: string; url?: string; name?: string; mimeType?: string }>;
+  answers: Record<string, string | UploadedFileMeta | { kind: "files"; items: UploadedFileMeta[] }>;
   createdAt?: string;
   submittedAt: string;
 };
@@ -41,9 +42,17 @@ const BRAND = {
 const API_BASE = "/api";
 
 function isUploadedValue(
-  value: string | { kind?: string; url?: string; name?: string; mimeType?: string },
-): value is { kind?: string; url?: string; name?: string; mimeType?: string } {
-  return typeof value === "object" && value !== null;
+  value: string | UploadedFileMeta | { kind: "files"; items: UploadedFileMeta[] },
+): value is UploadedFileMeta {
+  return typeof value === "object" && value !== null && (value as { kind?: string }).kind !== "files";
+}
+
+function isMultiFilesValue(
+  value: unknown,
+): value is { kind: "files"; items: UploadedFileMeta[] } {
+  if (typeof value !== "object" || value === null) return false;
+  const o = value as { kind?: string; items?: unknown };
+  return o.kind === "files" && Array.isArray(o.items);
 }
 
 function createDefaultField(type: FieldType): FormField {
@@ -82,6 +91,7 @@ export default function Home() {
   const [forms, setForms] = useState<TeacherForm[]>([]);
   const [submissions, setSubmissions] = useState<StudentSubmission[]>([]);
   const [selectedToken, setSelectedToken] = useState("");
+  const [clipboardNotice, setClipboardNotice] = useState("");
 
   const loadForms = useCallback(async (currentTeacherId = teacherId) => {
     const res = await fetch(`${API_BASE}/forms/by-teacher/${currentTeacherId}`);
@@ -216,15 +226,26 @@ export default function Home() {
     await loadForms();
   }
 
+  function showClipboardMessage(message: string) {
+    setClipboardNotice(message);
+    if (typeof window !== "undefined") {
+      window.setTimeout(() => setClipboardNotice(""), 6500);
+    }
+  }
+
   async function publishForm(formId: string, token: string, isOpen: boolean) {
     if (!isOpen) {
       await toggleFormOpen(formId);
     }
     setSelectedToken(token);
     setActivePanel("responses");
-    if (typeof window !== "undefined") {
-      const link = `${window.location.origin}/submit/${token}`;
+    if (typeof window === "undefined") return;
+    const link = `${window.location.origin}/submit/${token}`;
+    try {
       await navigator.clipboard.writeText(link);
+      showClipboardMessage("تم نسخ رابط النموذج — يمكنك لصقه وإرساله للطلاب.");
+    } catch {
+      showClipboardMessage("تعذر النسخ التلقائي. انسخ الرابط من مربع «رابط النموذج» في الجانب.");
     }
   }
 
@@ -239,9 +260,14 @@ export default function Home() {
   const selectedForm = forms.find((f) => f.token === selectedToken);
   const formSubmissions = submissions.filter((s) => s.formToken === selectedToken);
 
-  function copyLink() {
+  async function copyLink() {
     if (!shareLink) return;
-    navigator.clipboard.writeText(shareLink);
+    try {
+      await navigator.clipboard.writeText(shareLink);
+      showClipboardMessage("تم نسخ الرابط.");
+    } catch {
+      showClipboardMessage("تعذر النسخ التلقائي من المتصفح.");
+    }
   }
 
   if (!isLoggedIn) {
@@ -349,6 +375,16 @@ export default function Home() {
               </button>
             </div>
           </div>
+
+          {clipboardNotice ? (
+            <div
+              className="mb-4 rounded-lg border px-3 py-2 text-sm text-emerald-900"
+              style={{ borderColor: "#a7f3d0", backgroundColor: "#ecfdf5" }}
+              role="status"
+            >
+              {clipboardNotice}
+            </div>
+          ) : null}
 
           {activePanel === "forms" ? (
             <div className="space-y-3">
@@ -525,25 +561,70 @@ export default function Home() {
                       <p className="text-xs text-zinc-500">{item.submittedAt}</p>
                     </div>
                     <div className="grid gap-2">
-                      {Object.entries(item.answers).map(([key, value]) => (
-                        <div key={key} className="rounded-md bg-[#f8f4fc] p-2 text-sm">
-                          <p className="mb-1 text-xs font-medium text-zinc-600">{key}</p>
-                          {isUploadedValue(value) && value.url ? (
-                            value.mimeType?.startsWith("image/") ? (
-                              <a href={value.url} target="_blank" rel="noreferrer">
-                                {/* eslint-disable-next-line @next/next/no-img-element */}
-                                <img src={value.url} alt={value.name || key} className="max-h-44 w-auto rounded-md border" />
-                              </a>
+                      {Object.entries(item.answers).map(([key, value]) => {
+                        const fieldLabel =
+                          selectedForm?.fields.find((fld) => fld.id === key)?.label ?? key;
+                        return (
+                          <div key={key} className="rounded-md bg-[#f8f4fc] p-2 text-sm">
+                            <p className="mb-1 text-xs font-medium text-zinc-600">{fieldLabel}</p>
+                            {isMultiFilesValue(value) ? (
+                              <div className="flex flex-wrap gap-3">
+                                {value.items.map((file, idx) =>
+                                  file.url ? (
+                                    file.mimeType?.startsWith("image/") ? (
+                                      <a
+                                        key={`${file.url}-${idx}`}
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                      >
+                                        {/* eslint-disable-next-line @next/next/no-img-element */}
+                                        <img
+                                          src={file.url}
+                                          alt={file.name || `${fieldLabel}-${idx + 1}`}
+                                          className="max-h-44 w-auto rounded-md border"
+                                        />
+                                      </a>
+                                    ) : (
+                                      <a
+                                        key={`${file.url}-${idx}`}
+                                        href={file.url}
+                                        target="_blank"
+                                        rel="noreferrer"
+                                        className="text-[#6f459b] underline"
+                                      >
+                                        {file.name || `ملف ${idx + 1}`}
+                                      </a>
+                                    )
+                                  ) : null,
+                                )}
+                              </div>
+                            ) : isUploadedValue(value) && value.url ? (
+                              value.mimeType?.startsWith("image/") ? (
+                                <a href={value.url} target="_blank" rel="noreferrer">
+                                  {/* eslint-disable-next-line @next/next/no-img-element */}
+                                  <img
+                                    src={value.url}
+                                    alt={value.name || fieldLabel}
+                                    className="max-h-44 w-auto rounded-md border"
+                                  />
+                                </a>
+                              ) : (
+                                <a
+                                  href={value.url}
+                                  target="_blank"
+                                  rel="noreferrer"
+                                  className="text-[#6f459b] underline"
+                                >
+                                  {value.name || "تحميل الملف"}
+                                </a>
+                              )
                             ) : (
-                              <a href={value.url} target="_blank" rel="noreferrer" className="text-[#6f459b] underline">
-                                {value.name || "تحميل الملف"}
-                              </a>
-                            )
-                          ) : (
-                            <p>{String(value)}</p>
-                          )}
-                        </div>
-                      ))}
+                              <p>{String(value)}</p>
+                            )}
+                          </div>
+                        );
+                      })}
                     </div>
                   </article>
                 ))}
@@ -600,8 +681,8 @@ export default function Home() {
                       : field.type === "number"
                         ? "رقم"
                         : field.type === "image"
-                          ? "صورة"
-                          : "ملف"}
+                          ? "صورة (يمكن رفع أكثر من صورة)"
+                          : "ملف (يمكن رفع أكثر من ملف)"}
                   </p>
                 </div>
               ))}

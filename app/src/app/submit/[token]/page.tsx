@@ -28,7 +28,7 @@ export default function SubmitByTokenPage() {
   const token = params?.token || "";
   const [studentName, setStudentName] = useState("");
   const [answers, setAnswers] = useState<Record<string, string>>({});
-  const [files, setFiles] = useState<Record<string, File | null>>({});
+  const [files, setFiles] = useState<Record<string, File[]>>({});
   const [message, setMessage] = useState("");
   const [form, setForm] = useState<TeacherForm | null>(null);
   const [loading, setLoading] = useState(true);
@@ -66,7 +66,7 @@ export default function SubmitByTokenPage() {
     const missing = form.fields.find((f) => {
       if (!f.required) return false;
       if (f.type === "image" || f.type === "file") {
-        return !files[f.id];
+        return !files[f.id]?.length;
       }
       return !answers[f.id]?.trim();
     });
@@ -82,9 +82,11 @@ export default function SubmitByTokenPage() {
     payload.set("studentName", studentName.trim());
     payload.set("answers", JSON.stringify(textAnswers));
     for (const field of form.fields) {
-      const selectedFile = files[field.id];
-      if (selectedFile) {
-        payload.set(`file_${field.id}`, selectedFile);
+      const selected = files[field.id];
+      if (selected?.length) {
+        for (const f of selected) {
+          payload.append(`file_${field.id}`, f);
+        }
       }
     }
     const res = await fetch(`${API_BASE}/submissions`, {
@@ -98,7 +100,15 @@ export default function SubmitByTokenPage() {
     setMessage("تم إرسال الإجابات بنجاح.");
     setStudentName("");
     setAnswers({});
-    setFiles({});
+    setFiles((prev) => {
+      const next = { ...prev };
+      for (const field of form.fields) {
+        if (field.type === "image" || field.type === "file") {
+          next[field.id] = [];
+        }
+      }
+      return next;
+    });
   }
 
   if (loading) {
@@ -148,16 +158,25 @@ export default function SubmitByTokenPage() {
                     className="w-full rounded-lg border bg-white px-3 py-2 text-sm text-[#2e1f45] file:mr-3 file:rounded-md file:border-0 file:bg-[#6f459b] file:px-3 file:py-1 file:text-white"
                     style={{ borderColor: "#d7cae4" }}
                     type="file"
+                    multiple
                     accept={f.type === "image" ? "image/*" : "*"}
-                    onChange={(e) =>
-                      setFiles((prev) => ({ ...prev, [f.id]: e.target.files?.[0] ?? null }))
-                    }
+                    onChange={(e) => {
+                      const list = e.target.files ? Array.from(e.target.files) : [];
+                      setFiles((prev) => ({ ...prev, [f.id]: list }));
+                    }}
                   />
-                  {files[f.id] && (
-                    <p className="text-xs text-zinc-600">
-                      تم اختيار: {files[f.id]?.name}
-                    </p>
-                  )}
+                  <p className="text-xs text-zinc-500">
+                    {f.type === "image"
+                      ? "يمكنك اختيار أكثر من صورة في المرة الواحدة (Ctrl أو السحب لتحديد متعدد)."
+                      : "يمكنك اختيار أكثر من ملف في المرة الواحدة."}
+                  </p>
+                  {files[f.id]?.length ? (
+                    <ul className="list-inside list-disc text-xs text-zinc-600">
+                      {files[f.id].map((file) => (
+                        <li key={`${file.name}-${file.size}-${file.lastModified}`}>{file.name}</li>
+                      ))}
+                    </ul>
+                  ) : null}
                 </div>
               ) : (
                 <input

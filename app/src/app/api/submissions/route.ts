@@ -37,6 +37,7 @@ export async function POST(request: Request) {
     }
 
     await ensureUploadBucket();
+    const uploadsByField = new Map<string, File[]>();
     for (const [key, value] of formData.entries()) {
       if (!key.startsWith("file_") || !(value instanceof File)) {
         continue;
@@ -45,25 +46,47 @@ export async function POST(request: Request) {
       if (!fieldId || value.size === 0) {
         continue;
       }
-      const originalName = value.name || `${fieldId}.bin`;
-      const ext = originalName.includes(".") ? originalName.split(".").pop() : "bin";
-      const path = `${formToken}/${Date.now()}-${fieldId}-${sanitizeFileName(studentName)}.${ext}`;
-      const bytes = Buffer.from(await value.arrayBuffer());
-      const { error: uploadError } = await supabase.storage.from(UPLOAD_BUCKET).upload(path, bytes, {
-        contentType: value.type || "application/octet-stream",
-        upsert: false,
-      });
-      if (uploadError) {
-        return Response.json({ error: "Failed to upload file." }, { status: 500 });
+      const list = uploadsByField.get(fieldId) ?? [];
+      list.push(value);
+      uploadsByField.set(fieldId, list);
+    }
+
+    const uploadStamp = Date.now();
+    for (const [fieldId, fileList] of uploadsByField) {
+      const uploadedItems: Array<{
+        kind: "file";
+        name: string;
+        url: string;
+        size: number;
+        mimeType: string;
+      }> = [];
+      for (let i = 0; i < fileList.length; i++) {
+        const value = fileList[i];
+        const originalName = value.name || `${fieldId}.bin`;
+        const ext = originalName.includes(".") ? originalName.split(".").pop() : "bin";
+        const path = `${formToken}/${uploadStamp}-${i}-${fieldId}-${sanitizeFileName(studentName)}.${ext}`;
+        const bytes = Buffer.from(await value.arrayBuffer());
+        const { error: uploadError } = await supabase.storage.from(UPLOAD_BUCKET).upload(path, bytes, {
+          contentType: value.type || "application/octet-stream",
+          upsert: false,
+        });
+        if (uploadError) {
+          return Response.json({ error: "Failed to upload file." }, { status: 500 });
+        }
+        const { data: publicUrlData } = supabase.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
+        uploadedItems.push({
+          kind: "file",
+          name: originalName,
+          url: publicUrlData.publicUrl,
+          size: value.size,
+          mimeType: value.type || "application/octet-stream",
+        });
       }
-      const { data: publicUrlData } = supabase.storage.from(UPLOAD_BUCKET).getPublicUrl(path);
-      answers[fieldId] = {
-        kind: "file",
-        name: originalName,
-        url: publicUrlData.publicUrl,
-        size: value.size,
-        mimeType: value.type || "application/octet-stream",
-      };
+      if (uploadedItems.length === 1) {
+        answers[fieldId] = uploadedItems[0];
+      } else {
+        answers[fieldId] = { kind: "files", items: uploadedItems };
+      }
     }
   } else {
     const body = await request.json();
