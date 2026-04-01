@@ -8,6 +8,7 @@ build/
 **/.env
 .DS_Store
 Thumbs.db
+git-status-out.txt
 *.log
 npm-debug.log*
 yarn-debug.log*
