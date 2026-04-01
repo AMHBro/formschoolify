@@ -51,31 +51,50 @@ export async function POST(request: Request) {
     }
 
     await ensureUploadBucket();
-    // Do not use formData.entries() for repeated keys: some runtimes only yield one part per name.
-    const uploadsByField = new Map<string, File[]>();
-    const fileKeys = new Set<string>();
-    for (const key of formData.keys()) {
-      if (key.startsWith("file_")) {
-        fileKeys.add(key);
-      }
+    /** fieldId → ordered file parts */
+    const uploadsByField = new Map<string, { order: number; file: File }[]>();
+    const PREFIX_NEW = "file__";
+    const PREFIX_LEGACY = "file_";
+    const legacyKeysDone = new Set<string>();
+
+    function addUploadPart(fieldId: string, order: number, file: File) {
+      const list = uploadsByField.get(fieldId) ?? [];
+      list.push({ order, file });
+      uploadsByField.set(fieldId, list);
     }
-    for (const key of fileKeys) {
-      const fieldId = key.slice("file_".length);
-      if (!fieldId) continue;
-      const parts = formData.getAll(key);
-      const list: File[] = [];
-      for (const value of parts) {
+
+    for (const key of formData.keys()) {
+      if (key.startsWith(PREFIX_NEW)) {
+        const rest = key.slice(PREFIX_NEW.length);
+        const sep = rest.lastIndexOf("__");
+        if (sep <= 0) continue;
+        const fieldId = rest.slice(0, sep);
+        const order = Number(rest.slice(sep + 2));
+        if (!fieldId || !Number.isFinite(order)) continue;
+        const value = formData.get(key);
         if (isNonEmptyUploadPart(value)) {
-          list.push(value);
+          addUploadPart(fieldId, order, value);
         }
+        continue;
       }
-      if (list.length) {
-        uploadsByField.set(fieldId, list);
+      if (key.startsWith(PREFIX_LEGACY) && !key.startsWith(PREFIX_NEW)) {
+        if (legacyKeysDone.has(key)) continue;
+        legacyKeysDone.add(key);
+        const fieldId = key.slice(PREFIX_LEGACY.length);
+        if (!fieldId) continue;
+        const parts = formData.getAll(key);
+        parts.forEach((value, order) => {
+          if (isNonEmptyUploadPart(value)) {
+            addUploadPart(fieldId, order, value);
+          }
+        });
       }
     }
 
     const uploadStamp = Date.now();
-    for (const [fieldId, fileList] of uploadsByField) {
+    for (const [fieldId, ordered] of uploadsByField) {
+      ordered.sort((a, b) => a.order - b.order);
+      const fileList = ordered.map((o) => o.file);
       const uploadedItems: Array<{
         kind: "file";
         name: string;

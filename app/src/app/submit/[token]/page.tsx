@@ -84,8 +84,9 @@ export default function SubmitByTokenPage() {
     for (const field of form.fields) {
       const selected = files[field.id];
       if (selected?.length) {
-        for (const f of selected) {
-          payload.append(`file_${field.id}`, f);
+        for (let i = 0; i < selected.length; i++) {
+          // Unique keys per part — some proxies/runtimes drop duplicate multipart names.
+          payload.append(`file__${field.id}__${i}`, selected[i]);
         }
       }
     }
