@@ -120,7 +120,7 @@ export default function SubmitByTokenPage() {
   }
 
   return (
-    <div className="min-h-screen bg-[#f0e9f4] p-4 text-[#2e1f45] sm:p-6">
+    <div className="min-h-screen bg-[#f0e9f4] p-4 text-[#2e1f45] sm:p-6" style={{ colorScheme: "light" }}>
       <main className="mx-auto max-w-2xl rounded-2xl bg-white p-4 shadow-sm sm:p-6">
         <h1 className="text-2xl font-bold text-[#391f5a]">{form.title}</h1>
         <p className="mt-1 text-sm text-zinc-600">{form.description}</p>
@@ -130,7 +130,13 @@ export default function SubmitByTokenPage() {
           </p>
         )}
         <div className="mt-5 space-y-3">
-          <input className="w-full rounded-lg border px-3 py-2" style={{ borderColor: "#d7cae4" }} placeholder="اسم الطالب" value={studentName} onChange={(e) => setStudentName(e.target.value)} />
+          <input
+            className="w-full rounded-lg border bg-white px-3 py-2 text-[#2e1f45] placeholder:text-zinc-400"
+            style={{ borderColor: "#d7cae4" }}
+            placeholder="اسم الطالب"
+            value={studentName}
+            onChange={(e) => setStudentName(e.target.value)}
+          />
           {form.fields.map((f) => (
             <div key={f.id}>
               <label className="mb-1 block text-sm font-medium">
@@ -139,7 +145,7 @@ export default function SubmitByTokenPage() {
               {f.type === "image" || f.type === "file" ? (
                 <div className="space-y-2">
                   <input
-                    className="w-full rounded-lg border px-3 py-2 text-sm"
+                    className="w-full rounded-lg border bg-white px-3 py-2 text-sm text-[#2e1f45] file:mr-3 file:rounded-md file:border-0 file:bg-[#6f459b] file:px-3 file:py-1 file:text-white"
                     style={{ borderColor: "#d7cae4" }}
                     type="file"
                     accept={f.type === "image" ? "image/*" : "*"}
@@ -155,7 +161,7 @@ export default function SubmitByTokenPage() {
                 </div>
               ) : (
                 <input
-                  className="w-full rounded-lg border px-3 py-2"
+                  className="w-full rounded-lg border bg-white px-3 py-2 text-[#2e1f45]"
                   style={{ borderColor: "#d7cae4" }}
                   type={f.type === "number" ? "number" : "text"}
                   value={answers[f.id] || ""}
