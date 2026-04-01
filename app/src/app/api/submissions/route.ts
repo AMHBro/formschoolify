@@ -16,14 +16,19 @@ async function ensureUploadBucket() {
   await supabase.storage.createBucket(UPLOAD_BUCKET, { public: true });
 }
 
-/** Undici/Node may not use the same `File` constructor as `instanceof File`. */
-function isNonEmptyUploadPart(value: FormDataEntryValue): value is Blob {
+/**
+ * FormDataEntryValue is `File | string` in TS; predicate must narrow to that union (not plain Blob).
+ * We avoid `instanceof File` because undici may use a different global.
+ */
+function isNonEmptyUploadPart(value: FormDataEntryValue): value is File {
+  if (typeof value !== "object" || value === null) {
+    return false;
+  }
+  const b = value as Blob;
   return (
-    typeof value === "object" &&
-    value !== null &&
-    typeof (value as Blob).arrayBuffer === "function" &&
-    typeof (value as Blob).size === "number" &&
-    (value as Blob).size > 0
+    typeof b.arrayBuffer === "function" &&
+    typeof b.size === "number" &&
+    b.size > 0
   );
 }
 
@@ -47,7 +52,7 @@ export async function POST(request: Request) {
 
     await ensureUploadBucket();
     // Do not use formData.entries() for repeated keys: some runtimes only yield one part per name.
-    const uploadsByField = new Map<string, Blob[]>();
+    const uploadsByField = new Map<string, File[]>();
     const fileKeys = new Set<string>();
     for (const key of formData.keys()) {
       if (key.startsWith("file_")) {
@@ -58,7 +63,7 @@ export async function POST(request: Request) {
       const fieldId = key.slice("file_".length);
       if (!fieldId) continue;
       const parts = formData.getAll(key);
-      const list: Blob[] = [];
+      const list: File[] = [];
       for (const value of parts) {
         if (isNonEmptyUploadPart(value)) {
           list.push(value);
@@ -81,9 +86,7 @@ export async function POST(request: Request) {
       for (let i = 0; i < fileList.length; i++) {
         const value = fileList[i];
         const originalName =
-          typeof (value as File).name === "string" && (value as File).name
-            ? (value as File).name
-            : `${fieldId}.bin`;
+          typeof value.name === "string" && value.name ? value.name : `${fieldId}.bin`;
         const ext = originalName.includes(".") ? originalName.split(".").pop() : "bin";
         const path = `${formToken}/${uploadStamp}-${i}-${fieldId}-${sanitizeFileName(studentName)}.${ext}`;
         const bytes = Buffer.from(await value.arrayBuffer());
